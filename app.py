@@ -14,7 +14,7 @@ from utils import (
 st.set_page_config(page_title="Dashboard TI", page_icon="📊", layout="wide")
 
 # ── Proteção por token na URL ─────────────────────────────────────────────────
-_token_valido = st.secrets.get("TOKEN_ACESSO", "")
+_token_valido = ""##st.secrets.get("TOKEN_ACESSO", "")
 _token_url    = st.query_params.get("token", "")
 if _token_valido and _token_url != _token_valido:
     st.error("🔒 Acesso não autorizado. Verifique o link com sua equipe.")
@@ -92,398 +92,341 @@ tab_dash, tab_projetos, tab_novo, tab_cal, tab_sprint = st.tabs([
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_dash:
     st.subheader("Visão Geral")
-
     if df.empty:
         st.info("Nenhum projeto cadastrado ainda.")
     else:
-        total          = len(df_filtrado)
-        em_andamento   = len(df_filtrado[df_filtrado["Status"] == "Em andamento"])
-        concluidos     = len(df_filtrado[df_filtrado["Status"] == "Concluído"])
-        atrasados_n    = len(projetos_atrasados(df_filtrado)) if not df_filtrado.empty else 0
-        media_prog     = df_filtrado["Progresso (%)"].mean() if not df_filtrado.empty else 0
-
-        c1, c2, c3, c4, c5 = st.columns(5)
+        total        = len(df_filtrado)
+        em_andamento = len(df_filtrado[df_filtrado["Status"] == "Em andamento"])
+        concluidos   = len(df_filtrado[df_filtrado["Status"] == "Concluído"])
+        atrasados_n  = len(projetos_atrasados(df_filtrado)) if not df_filtrado.empty else 0
+        media_prog   = df_filtrado["Progresso (%)"].mean() if not df_filtrado.empty else 0
+        c1,c2,c3,c4,c5 = st.columns(5)
         c1.metric("📁 Total", total)
         c2.metric("🔄 Em Andamento", em_andamento)
         c3.metric("✅ Concluídos", concluidos)
         c4.metric("⚠️ Atrasados", atrasados_n,
                   delta=f"-{atrasados_n}" if atrasados_n > 0 else None, delta_color="inverse")
         c5.metric("📊 Progresso Médio", f"{media_prog:.0f}%")
-
         st.divider()
-
-        col_a, col_b = st.columns(2)
-
+        col_a,col_b = st.columns(2)
         with col_a:
             st.markdown("#### Status dos Projetos")
             cnt = df_filtrado["Status"].value_counts().reset_index()
-            cnt.columns = ["Status", "Qtd"]
+            cnt.columns = ["Status","Qtd"]
             fig = px.pie(cnt, names="Status", values="Qtd",
                          color="Status", color_discrete_map=CORES_STATUS, hole=0.45)
             fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                              legend=dict(orientation="h", yanchor="bottom", y=-0.2),
-                              margin=dict(t=10, b=10))
+                              legend=dict(orientation="h",yanchor="bottom",y=-0.2),
+                              margin=dict(t=10,b=10))
             st.plotly_chart(fig, use_container_width=True)
-
         with col_b:
             st.markdown("#### Progresso (%) por Projeto")
             if not df_filtrado.empty:
-                df_p = df_filtrado[["Projeto", "Progresso (%)", "Status"]].sort_values("Progresso (%)")
-                # Cores por status
-                cor_map = df_p["Status"].map(CORES_STATUS).fillna("#64748b")
+                df_p = df_filtrado[["Projeto","Progresso (%)","Status"]].sort_values("Progresso (%)")
                 fig2 = go.Figure(go.Bar(
-                    x=df_p["Progresso (%)"],
-                    y=df_p["Projeto"],
-                    orientation="h",
-                    marker_color=cor_map.tolist(),
-                    text=df_p["Progresso (%)"].astype(int).astype(str) + "%",
-                    textposition="outside",
-                ))
-                fig2.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                    xaxis=dict(range=[0, 115], showgrid=False),
-                    yaxis=dict(tickfont=dict(size=11)),
-                    margin=dict(t=10, b=10, r=40),
-                    showlegend=False,
-                )
+                    x=df_p["Progresso (%)"], y=df_p["Projeto"], orientation="h",
+                    marker_color=df_p["Status"].map(CORES_STATUS).fillna("#64748b").tolist(),
+                    text=df_p["Progresso (%)"].astype(int).astype(str)+"%", textposition="outside"))
+                fig2.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
+                                   xaxis=dict(range=[0,115],showgrid=False),
+                                   margin=dict(t=10,b=10,r=40),showlegend=False)
                 st.plotly_chart(fig2, use_container_width=True)
-
-        col_c, col_d = st.columns(2)
-
+        col_c,col_d = st.columns(2)
         with col_c:
             st.markdown("#### Projetos por Responsável")
             if not df_filtrado.empty:
                 rc = df_filtrado["Responsável"].value_counts().reset_index()
-                rc.columns = ["Responsável", "Projetos"]
-                fig3 = px.bar(rc, x="Responsável", y="Projetos",
-                              color="Projetos", color_continuous_scale="Blues")
-                fig3.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                                   coloraxis_showscale=False, margin=dict(t=10, b=10))
+                rc.columns = ["Responsável","Projetos"]
+                fig3 = px.bar(rc,x="Responsável",y="Projetos",color="Projetos",color_continuous_scale="Blues")
+                fig3.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
+                                   coloraxis_showscale=False,margin=dict(t=10,b=10))
                 st.plotly_chart(fig3, use_container_width=True)
-
         with col_d:
             st.markdown("#### Linha do Tempo (Prazos)")
             if not df_filtrado.empty and "Prazo" in df_filtrado.columns:
-                df_g = df_filtrado.dropna(subset=["Início", "Prazo"]).copy()
+                df_g = df_filtrado.dropna(subset=["Início","Prazo"]).copy()
                 if not df_g.empty:
-                    fig4 = px.timeline(df_g, x_start="Início", x_end="Prazo",
-                                       y="Projeto", color="Status",
-                                       color_discrete_map=CORES_STATUS)
+                    fig4 = px.timeline(df_g,x_start="Início",x_end="Prazo",
+                                       y="Projeto",color="Status",color_discrete_map=CORES_STATUS)
                     fig4.update_yaxes(autorange="reversed")
-                    fig4.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                                       showlegend=False, margin=dict(t=10, b=10))
+                    fig4.update_layout(paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",
+                                       showlegend=False,margin=dict(t=10,b=10))
                     st.plotly_chart(fig4, use_container_width=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 2 — LISTA DE PROJETOS (com checkboxes de etapas)
+# TAB 2 — PROJETOS
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_projetos:
     st.subheader("📋 Projetos")
-
     if df_filtrado.empty:
         st.info("Nenhum projeto encontrado.")
     else:
-        PRIO_ICON = {"Alta": "🔴", "Média": "🟡", "Baixa": "🟢"}
-
-        for idx, row in df_filtrado.iterrows():
-            prio_icon = PRIO_ICON.get(str(row.get("Prioridade", "Média")), "🟡")
-            prog = int(row.get("Progresso (%)", 0))
-
-            with st.expander(
-                f"{prio_icon} **{row['Projeto']}** — {row['Responsável']} | "
-                f"{row['Status']} | {prog}%",
-                expanded=False
-            ):
-                col_info, col_checks = st.columns([2, 3])
-
+        PRIO_ICON = {"Alta":"🔴","Média":"🟡","Baixa":"🟢"}
+        for idx,row in df_filtrado.iterrows():
+            prio_icon = PRIO_ICON.get(str(row.get("Prioridade","Média")),"🟡")
+            prog = int(row.get("Progresso (%)",0))
+            with st.expander(f"{prio_icon} **{row['Projeto']}** — {row['Responsável']} | {row['Status']} | {prog}%",expanded=False):
+                col_info,col_checks = st.columns([2,3])
                 with col_info:
                     st.markdown(f"**Prioridade:** {row.get('Prioridade','Média')}")
                     st.markdown(f"**Status:** {row['Status']}")
-                    prazo_str = pd.to_datetime(row['Prazo']).strftime('%d/%m/%Y') if pd.notna(row.get('Prazo')) else "—"
+                    prazo_str  = pd.to_datetime(row['Prazo']).strftime('%d/%m/%Y')  if pd.notna(row.get('Prazo'))  else "—"
                     inicio_str = pd.to_datetime(row['Início']).strftime('%d/%m/%Y') if pd.notna(row.get('Início')) else "—"
                     st.markdown(f"**Início:** {inicio_str}")
                     st.markdown(f"**Prazo:** {prazo_str}")
-                    st.markdown(f"**Horas:** {int(row.get('Horas Gastas', 0))}h")
+                    st.markdown(f"**Horas:** {int(row.get('Horas Gastas',0))}h")
                     if row.get("Descrição") and str(row.get("Descrição")) != "nan":
                         st.markdown(f"**Descrição:** {row['Descrição']}")
-                    st.progress(prog / 100)
+                    st.progress(prog/100)
                     st.caption(f"Progresso: {prog}%")
-
                 with col_checks:
                     st.markdown("**✅ Etapas do Projeto**")
                     etapas_atuais = get_etapas(row)
                     novas_etapas  = []
-                    for i, etapa in enumerate(ETAPAS_PROJETO):
-                        checked = st.checkbox(
-                            etapa,
-                            value=etapas_atuais[i],
-                            key=f"etapa_{idx}_{i}"
-                        )
+                    for i,etapa in enumerate(ETAPAS_PROJETO):
+                        checked = st.checkbox(etapa,value=etapas_atuais[i],key=f"etapa_{idx}_{i}")
                         novas_etapas.append(checked)
-
                     if novas_etapas != etapas_atuais:
-                        atualizar_etapas(idx, novas_etapas)
-                        novo_prog = round((sum(novas_etapas) / len(ETAPAS_PROJETO)) * 100)
+                        atualizar_etapas(idx,novas_etapas)
+                        novo_prog = round((sum(novas_etapas)/len(ETAPAS_PROJETO))*100)
                         st.success(f"Progresso atualizado: {novo_prog}%")
                         st.rerun()
-
         st.divider()
         df_exp = df_filtrado.copy()
-        for c in ["Início", "Prazo"]:
+        for c in ["Início","Prazo"]:
             if c in df_exp.columns:
                 df_exp[c] = df_exp[c].dt.strftime("%d/%m/%Y")
-        csv = df_exp.drop(columns=["Etapas"], errors="ignore").to_csv(index=False).encode("utf-8")
-        st.download_button("⬇️ Exportar CSV", data=csv, file_name="projetos_ti.csv", mime="text/csv")
+        csv = df_exp.drop(columns=["Etapas"],errors="ignore").to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ Exportar CSV",data=csv,file_name="projetos_ti.csv",mime="text/csv")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 3 — NOVO PROJETO
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_novo:
     st.subheader("➕ Cadastrar Novo Projeto")
-
-    with st.form("form_novo_projeto", clear_on_submit=True):
-        col1, col2 = st.columns(2)
+    with st.form("form_novo_projeto",clear_on_submit=True):
+        col1,col2 = st.columns(2)
         with col1:
-            nome        = st.text_input("Nome do Projeto *", placeholder="Ex: Portal do Cliente")
-            responsavel = st.text_input("Responsável *", placeholder="Ex: Ana Silva")
-            prioridade  = st.selectbox("Prioridade *", ["Alta", "Média", "Baixa"])
-            status      = st.selectbox("Status *", ["Em andamento", "Pausado", "Concluído", "Atrasado"])
+            nome       = st.text_input("Nome do Projeto *",placeholder="Ex: Portal do Cliente")
+            responsavel= st.text_input("Responsável *",placeholder="Ex: Ana Silva")
+            prioridade = st.selectbox("Prioridade *",["Alta","Média","Baixa"])
+            status     = st.selectbox("Status *",["Em andamento","Pausado","Concluído","Atrasado"])
         with col2:
-            inicio  = st.date_input("Data de Início *", value=date.today())
-            prazo   = st.date_input("Prazo *", value=date.today())
-            horas   = st.number_input("Horas Gastas", min_value=0, value=0, step=1)
-            descricao = st.text_area("Descrição", placeholder="Breve descrição...")
-
+            inicio    = st.date_input("Data de Início *",value=date.today())
+            prazo     = st.date_input("Prazo *",value=date.today())
+            horas     = st.number_input("Horas Gastas",min_value=0,value=0,step=1)
+            descricao = st.text_area("Descrição",placeholder="Breve descrição...")
         st.markdown("**✅ Etapas iniciais concluídas** *(opcional — você pode marcar depois na aba Projetos)*")
         cols_etapas = st.columns(2)
         etapas_ini = []
-        for i, etapa in enumerate(ETAPAS_PROJETO):
-            col_e = cols_etapas[i % 2]
-            etapas_ini.append(col_e.checkbox(etapa, value=False, key=f"novo_etapa_{i}"))
-
-        prog_ini = round((sum(etapas_ini) / len(ETAPAS_PROJETO)) * 100)
+        for i,etapa in enumerate(ETAPAS_PROJETO):
+            etapas_ini.append(cols_etapas[i%2].checkbox(etapa,value=False,key=f"novo_etapa_{i}"))
+        prog_ini = round((sum(etapas_ini)/len(ETAPAS_PROJETO))*100)
         st.info(f"Progresso calculado automaticamente: **{prog_ini}%**")
-
-        enviado = st.form_submit_button("✅ Cadastrar Projeto", use_container_width=True, type="primary")
+        enviado = st.form_submit_button("✅ Cadastrar Projeto",use_container_width=True,type="primary")
         if enviado:
             if not nome or not responsavel:
                 st.error("Preencha pelo menos Nome e Responsável.")
             elif prazo < inicio:
                 st.error("O Prazo não pode ser anterior ao Início.")
             else:
-                etapas_str = ",".join(["1" if e else "0" for e in etapas_ini])
                 salvar_projeto({
-                    "Projeto": nome, "Responsável": responsavel,
-                    "Prioridade": prioridade, "Status": status,
-                    "Progresso (%)": prog_ini, "Etapas": etapas_str,
-                    "Início": pd.Timestamp(inicio), "Prazo": pd.Timestamp(prazo),
-                    "Horas Gastas": horas, "Descrição": descricao,
+                    "Projeto":nome,"Responsável":responsavel,"Prioridade":prioridade,
+                    "Status":status,"Progresso (%)":prog_ini,
+                    "Etapas":",".join(["1" if e else "0" for e in etapas_ini]),
+                    "Início":pd.Timestamp(inicio),"Prazo":pd.Timestamp(prazo),
+                    "Horas Gastas":horas,"Descrição":descricao,
                 })
                 st.success(f"✅ Projeto **{nome}** cadastrado! Progresso inicial: {prog_ini}%")
                 st.rerun()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — CALENDÁRIO (reuniões + prazos de projetos)
+# TAB 4 — CALENDÁRIO
 # ══════════════════════════════════════════════════════════════════════════════
 with tab_cal:
-    try:
-        from streamlit_calendar import calendar as st_calendar
-        CALENDAR_OK = True
-    except ImportError:
-        CALENDAR_OK = False
-        st.error("⚠️ Instale: `pip install streamlit-calendar` e reinicie.")
+    import json as _json
+    import streamlit.components.v1 as _cv1
+    hoje_cal = date.today()
 
-    if CALENDAR_OK:
-        hoje_cal = date.today()
+    reunioes = carregar_reunioes()
 
-        # Counter para forçar recriação do calendário ao salvar/excluir
-        if "cal_counter" not in st.session_state:
-            st.session_state["cal_counter"] = 0
+    # ── Sub-tabs: Calendário | Gerenciar Reuniões ─────────────────────────────
+    sub_cal, sub_gerenciar = st.tabs(["📅 Calendário", "🗂️ Gerenciar Reuniões"])
 
-        # Força rerun na primeira vez que a aba é aberta — resolve o blank calendar
-        if "cal_tab_visited" not in st.session_state:
-            st.session_state["cal_tab_visited"] = True
-            st.session_state["cal_counter"] += 1
-            st.rerun()
-
-        # ── Formulário HORIZONTAL no topo ─────────────────────────────────────
+    # ══ SUB-TAB: CALENDÁRIO ═══════════════════════════════════════════════════
+    with sub_cal:
+        # ── Formulário ────────────────────────────────────────────────────────
         with st.form("form_reuniao", clear_on_submit=True):
             st.markdown("##### ➕ Agendar Reunião")
-            c1, c2, c3, c4 = st.columns(4)
+            c1,c2,c3,c4 = st.columns(4)
             titulo_r      = c1.text_input("Título *",        placeholder="Alinhamento X")
             responsavel_r = c2.text_input("Responsável *",   placeholder="Matheus")
             participantes = c3.text_input("Participantes *", placeholder="Rose, João")
             empresa       = c4.text_input("Empresa *",       placeholder="Acme Corp")
-
-            c5, c6, c7, c8, c9 = st.columns([1, 1, 1, 2, 1])
-            data_r   = c5.date_input("Data *", value=hoje_cal)
-            hora_h   = c6.selectbox("Hora *",   list(range(0, 24)), index=9, format_func=lambda x: f"{x:02d}")
-            hora_m   = c7.selectbox("Minuto *", [0, 15, 30, 45], format_func=lambda x: f"{x:02d}")
-            local    = c8.text_input("Local / Link", placeholder="Sala 3 ou Meet")
-            obs_r    = c9.text_input("Obs.", placeholder="Pauta...")
-
+            c5,c6,c7,c8,c9 = st.columns([1,1,1,2,1])
+            data_r  = c5.date_input("Data *", value=hoje_cal)
+            hora_h  = c6.selectbox("Hora *",   list(range(0,24)), index=9,  format_func=lambda x:f"{x:02d}")
+            hora_m  = c7.selectbox("Minuto *", [0,15,30,45],               format_func=lambda x:f"{x:02d}")
+            local   = c8.text_input("Local / Link", placeholder="Sala 3 ou Meet")
+            obs_r   = c9.text_input("Obs.", placeholder="Pauta...")
             if st.form_submit_button("📅 Salvar Reunião", use_container_width=True, type="primary"):
                 if not titulo_r or not responsavel_r or not participantes or not empresa:
                     st.error("Preencha os campos obrigatórios *.")
                 else:
-                    horario_fmt = f"{hora_h:02d}:{hora_m:02d}"
                     salvar_reuniao({
-                        "Título": titulo_r, "Responsável": responsavel_r,
-                        "Participantes": participantes, "Empresa": empresa,
-                        "Data": pd.Timestamp(data_r), "Horário": horario_fmt,
-                        "Local": local, "Observações": obs_r,
+                        "Título":titulo_r, "Responsável":responsavel_r,
+                        "Participantes":participantes, "Empresa":empresa,
+                        "Data":pd.Timestamp(data_r),
+                        "Horário":f"{hora_h:02d}:{hora_m:02d}",
+                        "Local":local, "Observações":obs_r,
                     })
-                    st.session_state["cal_counter"] += 1
                     st.rerun()
 
-        # ── Monta eventos ─────────────────────────────────────────────────────
-        reunioes = carregar_reunioes()
+        # ── Monta eventos ──────────────────────────────────────────────────────
         df_cal   = carregar_dados()
-
         CORES_CAL = ["#3b82f6","#8b5cf6","#ec4899","#f59e0b","#10b981","#ef4444","#06b6d4","#f97316"]
         eventos = []
 
         if not reunioes.empty:
-            for idx, r in reunioes.iterrows():
+            for pos, (_, r) in enumerate(reunioes.iterrows()):
                 try:
                     data_str = pd.to_datetime(r["Data"]).strftime("%Y-%m-%d")
                     hora = str(r["Horário"]).strip()
                     try:
-                        h, m = hora.split(":")
-                        start = f"{data_str}T{int(h):02d}:{int(m):02d}:00"
-                        end   = f"{data_str}T{min(int(h)+1,23):02d}:{int(m):02d}:00"
+                        h,m = hora.split(":")
+                        st_ = f"{data_str}T{int(h):02d}:{int(m):02d}:00"
+                        en_ = f"{data_str}T{min(int(h)+1,23):02d}:{int(m):02d}:00"
                     except Exception:
-                        start = data_str
-                        end   = data_str
-                    cor = CORES_CAL[idx % len(CORES_CAL)]
+                        st_ = data_str; en_ = data_str
+                    cor = CORES_CAL[pos % len(CORES_CAL)]
                     eventos.append({
-                        "id": f"r_{idx}",
-                        "title": f"🤝 {hora} · {r['Título']}",
-                        "start": start, "end": end,
+                        "id": f"r_{pos}", "title": f"🤝 {hora} · {r['Título']}",
+                        "start": st_, "end": en_,
                         "backgroundColor": cor, "borderColor": cor,
-                        "extendedProps": {
-                            "tipo": "reuniao",
-                            "responsavel":   str(r.get("Responsável","")),
-                            "participantes": str(r.get("Participantes","")),
-                            "empresa":       str(r.get("Empresa","")),
-                            "local":         str(r.get("Local","")),
-                            "obs":           str(r.get("Observações","")),
-                            "idx":           int(idx),
-                        }
+                        "extendedProps": {"tipo":"reuniao","idx":pos,
+                            "responsavel":str(r.get("Responsável","")),
+                            "participantes":str(r.get("Participantes","")),
+                            "empresa":str(r.get("Empresa","")),
+                            "local":str(r.get("Local","")),
+                            "obs":str(r.get("Observações","")),}
                     })
                 except Exception:
                     pass
 
         if not df_cal.empty:
-            for idx, row in df_cal.iterrows():
+            for idx,row in df_cal.iterrows():
                 if pd.notna(row.get("Prazo")):
                     prazo_str = pd.to_datetime(row["Prazo"]).strftime("%Y-%m-%d")
                     status_p  = str(row.get("Status",""))
-                    cor_p     = CORES_STATUS.get(status_p, "#64748b")
+                    cor_p     = CORES_STATUS.get(status_p,"#64748b")
                     eventos.append({
-                        "id": f"p_{idx}",
-                        "title": f"🏁 Entrega: {row['Projeto']}",
-                        "start": prazo_str,
-                        "allDay": True,
+                        "id": f"p_{idx}", "title": f"🏁 {row['Projeto']}",
+                        "start": prazo_str, "allDay": True,
                         "backgroundColor": cor_p, "borderColor": cor_p,
-                        "extendedProps": {
-                            "tipo":        "prazo",
-                            "projeto":     str(row.get("Projeto","")),
-                            "responsavel": str(row.get("Responsável","")),
-                            "status":      status_p,
-                            "progresso":   int(row.get("Progresso (%)", 0)),
-                        }
+                        "extendedProps": {"tipo":"prazo",
+                            "projeto":str(row.get("Projeto","")),
+                            "responsavel":str(row.get("Responsável","")),
+                            "status":status_p,
+                            "progresso":int(row.get("Progresso (%)",0)),}
                     })
 
-        opcoes_cal = {
-            "initialView": "dayGridMonth",
-            "locale": "pt-br",
-            "headerToolbar": {
-                "left":   "prev,next today",
-                "center": "title",
-                "right":  "dayGridMonth,timeGridWeek,timeGridDay,listWeek"
-            },
-            "buttonText": {"today":"Hoje","month":"Mês","week":"Semana","day":"Dia","list":"Lista"},
-            "height": 680,
-            "selectable": True,
-            "editable": False,
-            "nowIndicator": True,
-            "dayMaxEvents": 4,
-            "eventTimeFormat": {"hour":"2-digit","minute":"2-digit","hour12":False},
-        }
+        ev_json = _json.dumps(eventos, ensure_ascii=False)
+        _cv1.html("""
+<html><head><meta charset='utf-8'><style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Inter','Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;padding:10px;}
+.nav{display:flex;align-items:center;gap:6px;margin-bottom:12px;}
+.nav-btn{background:#1e293b;color:#94a3b8;border:1px solid #334155;border-radius:7px;padding:5px 14px;cursor:pointer;font-size:12px;font-weight:500;}
+.nav-btn:hover{background:#3b82f6;color:#fff;border-color:#3b82f6;}
+.nav-title{flex:1;text-align:center;font-size:15px;font-weight:700;color:#f1f5f9;}
+.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
+.hdr{background:#1e293b;text-align:center;font-size:11px;font-weight:600;color:#64748b;padding:7px 2px;border-radius:5px;}
+.cell{background:#111827;border-radius:7px;min-height:88px;padding:6px 5px;border:1px solid transparent;}
+.cell:hover{border-color:#334155;}
+.cell.other-month{opacity:.35;}
+.cell.today{background:#0f2a4a;border-color:#3b82f6!important;}
+.day-num{font-size:11px;color:#64748b;margin-bottom:3px;font-weight:500;}
+.cell.today .day-num{color:#60a5fa;font-weight:700;background:#1d4ed8;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;}
+.ev{border-radius:4px;padding:2px 5px;font-size:10px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;font-weight:500;}
+.more{font-size:10px;color:#64748b;margin-top:1px;}
+</style></head><body>
+<div class='nav'>
+  <button class='nav-btn' onclick='prev()'>&#8249; Anterior</button>
+  <button class='nav-btn' onclick='goToday()'>Hoje</button>
+  <span class='nav-title' id='title'></span>
+  <button class='nav-btn' onclick='next()'>Próximo &#8250;</button>
+</div>
+<div class='grid' id='grid'></div>
+<script>
+var EVENTS=EVENTOS_JSON;
+var MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+var DIAS=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+var cur=new Date();cur.setDate(1);
+var today=new Date();today.setHours(0,0,0,0);
+function evDay(y,m,d){return EVENTS.filter(function(e){var s=new Date(e.start);return s.getFullYear()===y&&s.getMonth()===m&&s.getDate()===d;});}
+function render(){
+  var y=cur.getFullYear(),m=cur.getMonth();
+  document.getElementById('title').textContent=MESES[m]+' '+y;
+  var g=document.getElementById('grid');g.innerHTML='';
+  DIAS.forEach(function(d){var h=document.createElement('div');h.className='hdr';h.textContent=d;g.appendChild(h);});
+  var fd=new Date(y,m,1).getDay(),td=new Date(y,m+1,0).getDate(),pd=new Date(y,m,0).getDate();
+  for(var i=0;i<fd;i++){var c=mk();c.classList.add('other-month');var dn=mkd('day-num',pd-fd+1+i);c.appendChild(dn);g.appendChild(c);}
+  for(var d=1;d<=td;d++){
+    var dt=new Date(y,m,d);dt.setHours(0,0,0,0);
+    var c=mk();if(dt.getTime()===today.getTime())c.classList.add('today');
+    c.appendChild(mkd('day-num',d));
+    var evs=evDay(y,m,d);
+    evs.slice(0,3).forEach(function(e){var el=mkd('ev',e.title);el.style.background=e.backgroundColor||'#3b82f6';c.appendChild(el);});
+    if(evs.length>3)c.appendChild(mkd('more','+'+(evs.length-3)+' mais'));
+    g.appendChild(c);
+  }
+  var rem=(fd+td)%7;if(rem>0)for(var i=0;i<7-rem;i++){var c=mk();c.classList.add('other-month');g.appendChild(c);}
+}
+function mk(){var c=document.createElement('div');c.className='cell';return c;}
+function mkd(cls,txt){var c=document.createElement('div');c.className=cls;if(txt!=null)c.textContent=txt;return c;}
+function prev(){cur.setMonth(cur.getMonth()-1);render();}
+function next(){cur.setMonth(cur.getMonth()+1);render();}
+function goToday(){cur=new Date();cur.setDate(1);render();}
+render();
+</script></body></html>""".replace("EVENTOS_JSON", ev_json), height=620, scrolling=False)
 
-        custom_css = """
-        .fc { font-family: 'Inter','Segoe UI',sans-serif; }
-        .fc-toolbar-title { font-size:1.1rem!important; font-weight:700; }
-        .fc-button-primary { background:#3b82f6!important; border-color:#2563eb!important; border-radius:6px!important; font-size:0.78rem!important; }
-        .fc-button-primary:not(.fc-button-active):hover { background:#2563eb!important; }
-        .fc-button-active { background:#1d4ed8!important; }
-        .fc-event { border-radius:4px; font-size:0.76rem; padding:1px 4px; cursor:pointer; }
-        .fc-day-today { background:rgba(59,130,246,0.07)!important; }
-        .fc-daygrid-day-number { font-size:0.8rem; padding:4px 6px; }
-        """
+    # ══ SUB-TAB: GERENCIAR REUNIÕES ═══════════════════════════════════════════
+    with sub_gerenciar:
+        st.markdown("#### 🗂️ Reuniões Agendadas")
 
-        _cal_key = f"fc_stable_{st.session_state['cal_counter']}"
+        if reunioes.empty:
+            st.info("Nenhuma reunião agendada ainda.")
+        else:
+            # Prepara tabela para exibição
+            df_view = reunioes.copy().reset_index(drop=True)
+            df_view["Data"] = pd.to_datetime(df_view["Data"]).dt.strftime("%d/%m/%Y")
+            df_view.index = df_view.index + 1  # começa em 1 para o usuário
 
-        col_cal_v, col_detail = st.columns([4, 1])
-        with col_cal_v:
-            resultado = st_calendar(
-                events=eventos,
-                options=opcoes_cal,
-                custom_css=custom_css,
-                key=_cal_key,
-            )
-
-        # ── Painel de detalhe ─────────────────────────────────────────────────
-        with col_detail:
-            if resultado and resultado.get("eventClick"):
-                ev    = resultado["eventClick"]["event"]
-                props = ev.get("extendedProps", {})
-                tipo  = props.get("tipo", "")
-                st.markdown("#### 🗓️ Detalhe")
-
-                if tipo == "reuniao":
-                    partes  = ev.get("title","").split("·",1)
-                    nome_ev = partes[-1].strip() if len(partes) > 1 else partes[0]
-                    st.markdown(f"**🤝 {nome_ev}**")
-                    st.markdown(f"👤 **{props.get('responsavel','')}**")
-                    st.markdown(f"🤝 {props.get('participantes','')}")
-                    st.markdown(f"🏢 {props.get('empresa','')}")
-                    if props.get("local") and props.get("local") != "nan":
-                        st.markdown(f"📍 {props['local']}")
-                    if props.get("obs") and props.get("obs") != "nan":
-                        st.markdown(f"📝 {props['obs']}")
-                    st.divider()
-                    if st.button("🗑️ Excluir reunião", type="secondary", use_container_width=True):
-                        deletar_reuniao(int(props.get("idx", 0)))
-                        st.session_state["cal_counter"] += 1
-                        st.rerun()
-
-                elif tipo == "prazo":
-                    st.markdown(f"**🏁 {props.get('projeto','')}**")
-                    st.markdown(f"👤 {props.get('responsavel','')}")
-                    st.markdown(f"📌 {props.get('status','')}")
-                    prog = int(props.get("progresso", 0))
-                    st.progress(prog / 100)
-                    st.caption(f"{prog}% concluído")
-
-            else:
-                st.markdown("#### 🔔 Próximas")
-                futuras = (
-                    reunioes[pd.to_datetime(reunioes["Data"]).dt.date >= hoje_cal].sort_values("Data")
-                    if not reunioes.empty else pd.DataFrame()
-                )
-                if futuras.empty:
-                    st.caption("Sem reuniões agendadas.")
-                else:
-                    for _, r in futuras.head(6).iterrows():
-                        dt    = pd.to_datetime(r["Data"])
-                        badge = "🟡" if dt.date() == hoje_cal else "🔵"
+            # Mostra cada reunião como card com botão excluir
+            for pos, (_, row) in enumerate(reunioes.iterrows()):
+                data_fmt = pd.to_datetime(row["Data"]).strftime("%d/%m/%Y") if pd.notna(row["Data"]) else "—"
+                with st.container():
+                    col_info, col_btn = st.columns([5,1])
+                    with col_info:
                         st.markdown(
-                            f"{badge} **{r['Título']}**  \n"
-                            f"<small>{dt.strftime('%d/%m')} {r['Horário']} · {r['Responsável']}</small>",
-                            unsafe_allow_html=True
+                            f"**{row['Título']}** &nbsp;|&nbsp; "
+                            f"📅 {data_fmt} {row.get('Horário','')} &nbsp;|&nbsp; "
+                            f"👤 {row.get('Responsável','')} &nbsp;|&nbsp; "
+                            f"🏢 {row.get('Empresa','')}"
                         )
+                        loc = str(row.get("Local",""))
+                        obs = str(row.get("Observações",""))
+                        extra = []
+                        if loc and loc not in ("nan",""): extra.append(f"📍 {loc}")
+                        if obs and obs not in ("nan",""): extra.append(f"📝 {obs}")
+                        if extra:
+                            st.caption(" · ".join(extra))
+                    with col_btn:
+                        if st.button("🗑️", key=f"del_{pos}", help="Excluir reunião"):
+                            deletar_reuniao(pos)
+                            st.toast("✅ Reunião excluída!", icon="🗑️")
+                            st.rerun()
+                    st.divider()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 5 — SPRINT SEMANAL
@@ -495,7 +438,6 @@ with tab_sprint:
     seg_atual = segunda_da_semana()
     seg_prox  = proxima_segunda()
 
-    # Sprint da semana atual já existe?
     sprint_existe = False
     if not sprints.empty:
         sprint_existe = any(
@@ -511,7 +453,7 @@ with tab_sprint:
         if sprint_existe:
             st.info(f"✅ Sprint da semana **{label_semana}** já registrada!")
             if st.button("Registrar sprint adicional desta semana"):
-                sprint_existe = False  # libera o form
+                sprint_existe = False
 
         if not sprint_existe:
             with st.form("form_sprint", clear_on_submit=True):
