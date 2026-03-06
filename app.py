@@ -1,11 +1,3 @@
-token_valido = st.secrets.get("TOKEN_ACESSO", "")
-token_url    = st.query_params.get("token", "")
-
-if token_url != token_valido:
-    st.set_page_config(page_title="Acesso Restrito", page_icon="🔒")
-    st.error("🔒 Acesso não autorizado.")
-    st.stop()
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -20,6 +12,13 @@ from utils import (
 
 # ── Página ────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="Dashboard TI", page_icon="📊", layout="wide")
+
+# ── Proteção por token na URL ─────────────────────────────────────────────────
+_token_valido = st.secrets.get("TOKEN_ACESSO", "")
+_token_url    = st.query_params.get("token", "")
+if _token_valido and _token_url != _token_valido:
+    st.error("🔒 Acesso não autorizado. Verifique o link com sua equipe.")
+    st.stop()
 
 st.markdown("""
 <style>
@@ -297,21 +296,29 @@ with tab_cal:
     if CALENDAR_OK:
         hoje_cal = date.today()
 
-        with st.expander("➕ Agendar Nova Reunião", expanded=False):
+        # ── Garante que o counter existe SEMPRE, independente de qualquer ação
+        if "cal_counter" not in st.session_state:
+            st.session_state["cal_counter"] = 0
+
+        # ── Layout: formulário | calendário | detalhe ─────────────────────────
+        col_form_r, col_cal_v, col_detail = st.columns([1, 3, 1])
+
+        # ── Formulário lateral esquerdo ───────────────────────────────────────
+        with col_form_r:
+            st.markdown("#### ➕ Agendar Reunião")
             with st.form("form_reuniao", clear_on_submit=True):
-                c1, c2, c3 = st.columns(3)
-                titulo_r      = c1.text_input("Título *", placeholder="Alinhamento Projeto X")
-                responsavel_r = c2.text_input("Responsável *", placeholder="Matheus")
-                participantes = c3.text_input("Participantes *", placeholder="Rose, João")
-                c4, c5, c6, c7 = st.columns(4)
-                empresa = c4.text_input("Empresa *", placeholder="Acme Corp")
-                data_r  = c5.date_input("Data *", value=hoje_cal)
-                horario = c6.text_input("Horário *", placeholder="14:00")
-                local   = c7.text_input("Local / Link", placeholder="Sala 3")
-                obs     = st.text_area("Observações", height=60)
+                titulo_r      = st.text_input("Título *",        placeholder="Alinhamento X")
+                responsavel_r = st.text_input("Responsável *",   placeholder="Matheus")
+                participantes = st.text_input("Participantes *", placeholder="Rose, João")
+                empresa       = st.text_input("Empresa *",       placeholder="Acme Corp")
+                data_r        = st.date_input("Data *",          value=hoje_cal)
+                horario       = st.text_input("Horário *",       placeholder="14:00")
+                local         = st.text_input("Local / Link",    placeholder="Sala 3")
+                obs           = st.text_area("Observações",      height=80)
+
                 if st.form_submit_button("📅 Salvar", use_container_width=True, type="primary"):
                     if not titulo_r or not responsavel_r or not participantes or not empresa or not horario:
-                        st.error("Preencha os campos obrigatórios *.")
+                        st.error("Preencha os campos *.")
                     else:
                         salvar_reuniao({
                             "Título": titulo_r, "Responsável": responsavel_r,
@@ -319,15 +326,17 @@ with tab_cal:
                             "Data": pd.Timestamp(data_r), "Horário": horario,
                             "Local": local, "Observações": obs,
                         })
-                        st.success(f"✅ Reunião **{titulo_r}** salva! Feche o painel para ver no calendário.")
+                        # Incrementa → muda key → calendário recarrega com novos dados
+                        st.session_state["cal_counter"] += 1
+                        st.rerun()
 
+        # ── Monta eventos DEPOIS do formulário ────────────────────────────────
         reunioes = carregar_reunioes()
-        df_cal   = carregar_dados()  # fresh
+        df_cal   = carregar_dados()
 
         CORES_CAL = ["#3b82f6","#8b5cf6","#ec4899","#f59e0b","#10b981","#ef4444","#06b6d4","#f97316"]
         eventos = []
 
-        # Reuniões
         if not reunioes.empty:
             for idx, r in reunioes.iterrows():
                 try:
@@ -348,18 +357,17 @@ with tab_cal:
                         "backgroundColor": cor, "borderColor": cor,
                         "extendedProps": {
                             "tipo": "reuniao",
-                            "responsavel": str(r.get("Responsável","")),
+                            "responsavel":   str(r.get("Responsável","")),
                             "participantes": str(r.get("Participantes","")),
-                            "empresa": str(r.get("Empresa","")),
-                            "local": str(r.get("Local","")),
-                            "obs": str(r.get("Observações","")),
-                            "idx": int(idx),
+                            "empresa":       str(r.get("Empresa","")),
+                            "local":         str(r.get("Local","")),
+                            "obs":           str(r.get("Observações","")),
+                            "idx":           int(idx),
                         }
                     })
                 except Exception:
                     pass
 
-        # Prazos dos projetos (dia final de entrega)
         if not df_cal.empty:
             for idx, row in df_cal.iterrows():
                 if pd.notna(row.get("Prazo")):
@@ -371,13 +379,13 @@ with tab_cal:
                         "title": f"🏁 Entrega: {row['Projeto']}",
                         "start": prazo_str,
                         "allDay": True,
-                        "backgroundColor": cor_p,
-                        "borderColor": cor_p,
+                        "backgroundColor": cor_p, "borderColor": cor_p,
                         "extendedProps": {
-                            "tipo": "prazo",
+                            "tipo":        "prazo",
+                            "projeto":     str(row.get("Projeto","")),
                             "responsavel": str(row.get("Responsável","")),
-                            "status": status_p,
-                            "progresso": int(row.get("Progresso (%)", 0)),
+                            "status":      status_p,
+                            "progresso":   int(row.get("Progresso (%)", 0)),
                         }
                     })
 
@@ -385,12 +393,12 @@ with tab_cal:
             "initialView": "dayGridMonth",
             "locale": "pt-br",
             "headerToolbar": {
-                "left": "prev,next today",
+                "left":   "prev,next today",
                 "center": "title",
-                "right": "dayGridMonth,timeGridWeek,timeGridDay,listWeek"
+                "right":  "dayGridMonth,timeGridWeek,timeGridDay,listWeek"
             },
             "buttonText": {"today":"Hoje","month":"Mês","week":"Semana","day":"Dia","list":"Lista"},
-            "height": 660,
+            "height": 680,
             "selectable": True,
             "editable": False,
             "nowIndicator": True,
@@ -409,33 +417,31 @@ with tab_cal:
         .fc-daygrid-day-number { font-size:0.8rem; padding:4px 6px; }
         """
 
-        import hashlib, json as _json
-        _ev_hash = hashlib.md5(_json.dumps(eventos, default=str).encode()).hexdigest()[:8]
-        if "cal_eventos_hash" not in st.session_state or st.session_state["cal_eventos_hash"] != _ev_hash:
-            st.session_state["cal_eventos_hash"] = _ev_hash
-            st.session_state["cal_key"] = _ev_hash
-        if "cal_key" not in st.session_state:
-            st.session_state["cal_key"] = "init"
+        # KEY: usa o counter que só muda quando o usuário salva/exclui algo.
+        # Isso garante que o calendário SEMPRE renderiza ao abrir a aba (counter=0),
+        # e recarrega com dados novos somente quando necessário (counter > 0).
+        _cal_key = f"fc_stable_{st.session_state['cal_counter']}"
 
-        col_cal_v, col_detail = st.columns([4, 1])
         with col_cal_v:
             resultado = st_calendar(
                 events=eventos,
                 options=opcoes_cal,
                 custom_css=custom_css,
-                key="fullcalendar_" + st.session_state["cal_key"]
+                key=_cal_key,
             )
 
+        # ── Painel de detalhe ─────────────────────────────────────────────────
         with col_detail:
-            st.markdown("#### 🗓️ Detalhe")
             if resultado and resultado.get("eventClick"):
                 ev    = resultado["eventClick"]["event"]
                 props = ev.get("extendedProps", {})
                 tipo  = props.get("tipo", "")
+                st.markdown("#### 🗓️ Detalhe")
 
                 if tipo == "reuniao":
-                    titulo_ev = ev.get("title","").split("·",1)
-                    st.markdown(f"**🤝 {titulo_ev[-1].strip() if len(titulo_ev)>1 else titulo_ev[0]}**")
+                    partes  = ev.get("title","").split("·",1)
+                    nome_ev = partes[-1].strip() if len(partes) > 1 else partes[0]
+                    st.markdown(f"**🤝 {nome_ev}**")
                     st.markdown(f"👤 **{props.get('responsavel','')}**")
                     st.markdown(f"🤝 {props.get('participantes','')}")
                     st.markdown(f"🏢 {props.get('empresa','')}")
@@ -446,25 +452,28 @@ with tab_cal:
                     st.divider()
                     if st.button("🗑️ Excluir reunião", type="secondary", use_container_width=True):
                         deletar_reuniao(int(props.get("idx", 0)))
+                        st.session_state["cal_counter"] += 1
                         st.rerun()
 
                 elif tipo == "prazo":
-                    titulo_ev = ev.get("title","").replace("🏁 Entrega: ","")
-                    st.markdown(f"**🏁 {titulo_ev}**")
+                    st.markdown(f"**🏁 {props.get('projeto','')}**")
                     st.markdown(f"👤 {props.get('responsavel','')}")
-                    st.markdown(f"📌 Status: {props.get('status','')}")
-                    st.markdown(f"📊 Progresso: {props.get('progresso',0)}%")
-                    st.progress(int(props.get('progresso', 0)) / 100)
+                    st.markdown(f"📌 {props.get('status','')}")
+                    prog = int(props.get("progresso", 0))
+                    st.progress(prog / 100)
+                    st.caption(f"{prog}% concluído")
+
             else:
-                st.caption("Clique em um evento para ver os detalhes.")
+                st.markdown("#### 🔔 Próximas")
                 futuras = (
                     reunioes[pd.to_datetime(reunioes["Data"]).dt.date >= hoje_cal].sort_values("Data")
                     if not reunioes.empty else pd.DataFrame()
                 )
-                if not futuras.empty:
-                    st.markdown(f"**🔔 Próximas reuniões ({len(futuras)})**")
-                    for _, r in futuras.head(5).iterrows():
-                        dt = pd.to_datetime(r["Data"])
+                if futuras.empty:
+                    st.caption("Sem reuniões agendadas.")
+                else:
+                    for _, r in futuras.head(6).iterrows():
+                        dt    = pd.to_datetime(r["Data"])
                         badge = "🟡" if dt.date() == hoje_cal else "🔵"
                         st.markdown(
                             f"{badge} **{r['Título']}**  \n"
