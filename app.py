@@ -296,41 +296,47 @@ with tab_cal:
     if CALENDAR_OK:
         hoje_cal = date.today()
 
-        # ── Garante que o counter existe SEMPRE, independente de qualquer ação
+        # Counter para forçar recriação do calendário ao salvar/excluir
         if "cal_counter" not in st.session_state:
             st.session_state["cal_counter"] = 0
 
-        # ── Layout: formulário | calendário | detalhe ─────────────────────────
-        col_form_r, col_cal_v, col_detail = st.columns([1, 3, 1])
+        # Força rerun na primeira vez que a aba é aberta — resolve o blank calendar
+        if "cal_tab_visited" not in st.session_state:
+            st.session_state["cal_tab_visited"] = True
+            st.session_state["cal_counter"] += 1
+            st.rerun()
 
-        # ── Formulário lateral esquerdo ───────────────────────────────────────
-        with col_form_r:
-            st.markdown("#### ➕ Agendar Reunião")
-            with st.form("form_reuniao", clear_on_submit=True):
-                titulo_r      = st.text_input("Título *",        placeholder="Alinhamento X")
-                responsavel_r = st.text_input("Responsável *",   placeholder="Matheus")
-                participantes = st.text_input("Participantes *", placeholder="Rose, João")
-                empresa       = st.text_input("Empresa *",       placeholder="Acme Corp")
-                data_r        = st.date_input("Data *",          value=hoje_cal)
-                horario       = st.text_input("Horário *",       placeholder="14:00")
-                local         = st.text_input("Local / Link",    placeholder="Sala 3")
-                obs           = st.text_area("Observações",      height=80)
+        # ── Formulário HORIZONTAL no topo ─────────────────────────────────────
+        with st.form("form_reuniao", clear_on_submit=True):
+            st.markdown("##### ➕ Agendar Reunião")
+            c1, c2, c3, c4 = st.columns(4)
+            titulo_r      = c1.text_input("Título *",        placeholder="Alinhamento X")
+            responsavel_r = c2.text_input("Responsável *",   placeholder="Matheus")
+            participantes = c3.text_input("Participantes *", placeholder="Rose, João")
+            empresa       = c4.text_input("Empresa *",       placeholder="Acme Corp")
 
-                if st.form_submit_button("📅 Salvar", use_container_width=True, type="primary"):
-                    if not titulo_r or not responsavel_r or not participantes or not empresa or not horario:
-                        st.error("Preencha os campos *.")
-                    else:
-                        salvar_reuniao({
-                            "Título": titulo_r, "Responsável": responsavel_r,
-                            "Participantes": participantes, "Empresa": empresa,
-                            "Data": pd.Timestamp(data_r), "Horário": horario,
-                            "Local": local, "Observações": obs,
-                        })
-                        # Incrementa → muda key → calendário recarrega com novos dados
-                        st.session_state["cal_counter"] += 1
-                        st.rerun()
+            c5, c6, c7, c8, c9 = st.columns([1, 1, 1, 2, 1])
+            data_r   = c5.date_input("Data *", value=hoje_cal)
+            hora_h   = c6.selectbox("Hora *",   list(range(0, 24)), index=9, format_func=lambda x: f"{x:02d}")
+            hora_m   = c7.selectbox("Minuto *", [0, 15, 30, 45], format_func=lambda x: f"{x:02d}")
+            local    = c8.text_input("Local / Link", placeholder="Sala 3 ou Meet")
+            obs_r    = c9.text_input("Obs.", placeholder="Pauta...")
 
-        # ── Monta eventos DEPOIS do formulário ────────────────────────────────
+            if st.form_submit_button("📅 Salvar Reunião", use_container_width=True, type="primary"):
+                if not titulo_r or not responsavel_r or not participantes or not empresa:
+                    st.error("Preencha os campos obrigatórios *.")
+                else:
+                    horario_fmt = f"{hora_h:02d}:{hora_m:02d}"
+                    salvar_reuniao({
+                        "Título": titulo_r, "Responsável": responsavel_r,
+                        "Participantes": participantes, "Empresa": empresa,
+                        "Data": pd.Timestamp(data_r), "Horário": horario_fmt,
+                        "Local": local, "Observações": obs_r,
+                    })
+                    st.session_state["cal_counter"] += 1
+                    st.rerun()
+
+        # ── Monta eventos ─────────────────────────────────────────────────────
         reunioes = carregar_reunioes()
         df_cal   = carregar_dados()
 
@@ -417,11 +423,9 @@ with tab_cal:
         .fc-daygrid-day-number { font-size:0.8rem; padding:4px 6px; }
         """
 
-        # KEY: usa o counter que só muda quando o usuário salva/exclui algo.
-        # Isso garante que o calendário SEMPRE renderiza ao abrir a aba (counter=0),
-        # e recarrega com dados novos somente quando necessário (counter > 0).
         _cal_key = f"fc_stable_{st.session_state['cal_counter']}"
 
+        col_cal_v, col_detail = st.columns([4, 1])
         with col_cal_v:
             resultado = st_calendar(
                 events=eventos,
