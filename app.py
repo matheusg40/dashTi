@@ -14,7 +14,7 @@ from utils import (
 st.set_page_config(page_title="Dashboard TI", page_icon="📊", layout="wide")
 
 # ── Proteção por token na URL ─────────────────────────────────────────────────
-_token_valido = st.secrets.get("TOKEN_ACESSO", "")
+_token_valido = ""##st.secrets.get("TOKEN_ACESSO", "")
 _token_url    = st.query_params.get("token", "")
 if _token_valido and _token_url != _token_valido:
     st.error("🔒 Acesso não autorizado. Verifique o link com sua equipe.")
@@ -316,11 +316,12 @@ with tab_cal:
         if not df_cal.empty:
             for idx,row in df_cal.iterrows():
                 if pd.notna(row.get("Prazo")):
-                    prazo_str = pd.to_datetime(row["Prazo"]).strftime("%Y-%m-%d")
+                    prazo_str = pd.to_datetime(row["Prazo"]).date().strftime("%Y-%m-%d")
                     status_p  = str(row.get("Status",""))
                     cor_p     = CORES_STATUS.get(status_p,"#64748b")
+                    prog_p = int(row.get("Progresso (%)", 0))
                     eventos.append({
-                        "id": f"p_{idx}", "title": f"🏁 {row['Projeto']}",
+                        "id": f"p_{idx}", "title": f"🏁 {row['Projeto']} · {prog_p}%",
                         "start": prazo_str, "allDay": True,
                         "backgroundColor": cor_p, "borderColor": cor_p,
                         "extendedProps": {"tipo":"prazo",
@@ -363,7 +364,7 @@ var MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto
 var DIAS=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 var cur=new Date();cur.setDate(1);
 var today=new Date();today.setHours(0,0,0,0);
-function evDay(y,m,d){return EVENTS.filter(function(e){var s=new Date(e.start);return s.getFullYear()===y&&s.getMonth()===m&&s.getDate()===d;});}
+function evDay(y,m,d){return EVENTS.filter(function(e){var raw=e.start.length===10?e.start+'T12:00:00':e.start;var s=new Date(raw);return s.getFullYear()===y&&s.getMonth()===m&&s.getDate()===d;});}
 function render(){
   var y=cur.getFullYear(),m=cur.getMonth();
   document.getElementById('title').textContent=MESES[m]+' '+y;
@@ -376,7 +377,12 @@ function render(){
     var c=mk();if(dt.getTime()===today.getTime())c.classList.add('today');
     c.appendChild(mkd('day-num',d));
     var evs=evDay(y,m,d);
-    evs.slice(0,3).forEach(function(e){var el=mkd('ev',e.title);el.style.background=e.backgroundColor||'#3b82f6';c.appendChild(el);});
+    evs.slice(0,3).forEach(function(e){
+      var el=mkd('ev',e.title);
+      el.style.background=e.backgroundColor||'#3b82f6';
+      var p=e.extendedProps||{};
+      c.appendChild(el);
+    });
     if(evs.length>3)c.appendChild(mkd('more','+'+(evs.length-3)+' mais'));
     g.appendChild(c);
   }
@@ -392,41 +398,64 @@ render();
 
     # ══ SUB-TAB: GERENCIAR REUNIÕES ═══════════════════════════════════════════
     with sub_gerenciar:
-        st.markdown("#### 🗂️ Reuniões Agendadas")
+        col_reunioes, col_projetos = st.columns([3, 2])
 
-        if reunioes.empty:
-            st.info("Nenhuma reunião agendada ainda.")
-        else:
-            # Prepara tabela para exibição
-            df_view = reunioes.copy().reset_index(drop=True)
-            df_view["Data"] = pd.to_datetime(df_view["Data"]).dt.strftime("%d/%m/%Y")
-            df_view.index = df_view.index + 1  # começa em 1 para o usuário
+        with col_reunioes:
+            st.markdown("#### 🗂️ Reuniões Agendadas")
+            if reunioes.empty:
+                st.info("Nenhuma reunião agendada ainda.")
+            else:
+                for pos, (_, row) in enumerate(reunioes.iterrows()):
+                    data_fmt = pd.to_datetime(row["Data"]).strftime("%d/%m/%Y") if pd.notna(row["Data"]) else "—"
+                    with st.container():
+                        col_info, col_btn = st.columns([5,1])
+                        with col_info:
+                            st.markdown(
+                                f"**{row['Título']}** &nbsp;|&nbsp; "
+                                f"📅 {data_fmt} {row.get('Horário','')} &nbsp;|&nbsp; "
+                                f"👤 {row.get('Responsável','')} &nbsp;|&nbsp; "
+                                f"🏢 {row.get('Empresa','')}"
+                            )
+                            loc = str(row.get("Local",""))
+                            obs = str(row.get("Observações",""))
+                            extra = []
+                            if loc and loc not in ("nan",""): extra.append(f"📍 {loc}")
+                            if obs and obs not in ("nan",""): extra.append(f"📝 {obs}")
+                            if extra:
+                                st.caption(" · ".join(extra))
+                        with col_btn:
+                            if st.button("🗑️", key=f"del_{pos}", help="Excluir reunião"):
+                                deletar_reuniao(pos)
+                                st.toast("✅ Reunião excluída!", icon="🗑️")
+                                st.rerun()
+                        st.divider()
 
-            # Mostra cada reunião como card com botão excluir
-            for pos, (_, row) in enumerate(reunioes.iterrows()):
-                data_fmt = pd.to_datetime(row["Data"]).strftime("%d/%m/%Y") if pd.notna(row["Data"]) else "—"
-                with st.container():
-                    col_info, col_btn = st.columns([5,1])
-                    with col_info:
-                        st.markdown(
-                            f"**{row['Título']}** &nbsp;|&nbsp; "
-                            f"📅 {data_fmt} {row.get('Horário','')} &nbsp;|&nbsp; "
-                            f"👤 {row.get('Responsável','')} &nbsp;|&nbsp; "
-                            f"🏢 {row.get('Empresa','')}"
-                        )
-                        loc = str(row.get("Local",""))
-                        obs = str(row.get("Observações",""))
-                        extra = []
-                        if loc and loc not in ("nan",""): extra.append(f"📍 {loc}")
-                        if obs and obs not in ("nan",""): extra.append(f"📝 {obs}")
-                        if extra:
-                            st.caption(" · ".join(extra))
-                    with col_btn:
-                        if st.button("🗑️", key=f"del_{pos}", help="Excluir reunião"):
-                            deletar_reuniao(pos)
-                            st.toast("✅ Reunião excluída!", icon="🗑️")
-                            st.rerun()
-                    st.divider()
+        with col_projetos:
+            st.markdown("#### 📊 Progresso dos Projetos")
+            df_prog = carregar_dados()
+            if df_prog.empty:
+                st.info("Nenhum projeto cadastrado.")
+            else:
+                df_prog = df_prog.sort_values("Progresso (%)", ascending=False)
+                for _, proj in df_prog.iterrows():
+                    prog = int(proj.get("Progresso (%)", 0))
+                    status_p = str(proj.get("Status",""))
+                    cor = CORES_STATUS.get(status_p, "#64748b")
+                    prazo_p = pd.to_datetime(proj["Prazo"]).strftime("%d/%m") if pd.notna(proj.get("Prazo")) else "—"
+
+                    st.markdown(
+                        f"<div style='margin-bottom:2px;font-size:13px;font-weight:600;color:#e2e8f0'>"
+                        f"{proj['Projeto']}"
+                        f"<span style='float:right;font-size:12px;color:{cor};font-weight:700'>{prog}%</span>"
+                        f"</div>"
+                        f"<div style='font-size:11px;color:#64748b;margin-bottom:5px'>"
+                        f"👤 {proj.get('Responsável','')} &nbsp;·&nbsp; 📅 até {prazo_p} &nbsp;·&nbsp; "
+                        f"<span style='color:{cor}'>{status_p}</span>"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+                    st.progress(prog / 100)
+                    st.markdown("<div style='margin-bottom:10px'></div>", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 5 — SPRINT SEMANAL
@@ -434,15 +463,8 @@ render();
 with tab_sprint:
     st.subheader("🏃 Sprint Semanal")
 
-    sprints = carregar_sprints()
+    sprints   = carregar_sprints()
     seg_atual = segunda_da_semana()
-    seg_prox  = proxima_segunda()
-
-    sprint_existe = False
-    if not sprints.empty:
-        sprint_existe = any(
-            pd.to_datetime(sprints["Semana"]).dt.date == seg_atual
-        )
 
     col_form_sp, col_hist = st.columns([2, 3], gap="large")
 
@@ -450,58 +472,65 @@ with tab_sprint:
         label_semana = f"Semana {seg_atual.strftime('%d/%m/%Y')}"
         st.markdown(f"#### ✍️ Registrar Sprint — {label_semana}")
 
-        if sprint_existe:
-            st.info(f"✅ Sprint da semana **{label_semana}** já registrada!")
-            if st.button("Registrar sprint adicional desta semana"):
-                sprint_existe = False
+        with st.form("form_sprint", clear_on_submit=True):
+            bu = st.selectbox("BU / Área *", [
+                "Estratégia & Projetos",
+                "Governança & Sustentação",
+            ])
+            responsavel_sp = st.text_input("Responsável *", placeholder="Ex: Ana Silva")
+            progressos = st.text_area(
+                "📈 Progressos da semana *",
+                placeholder="- Concluímos o módulo X\n- Finalizamos a migração Y",
+                height=110
+            )
+            desafios = st.text_area(
+                "⚠️ Desafios",
+                placeholder="- Atraso na entrega do fornecedor Z",
+                height=90
+            )
+            proxima = st.text_area(
+                "🔜 Próxima Sprint",
+                placeholder="- Iniciar módulo W\n- Reunião com cliente",
+                height=90
+            )
+            meta = st.text_input(
+                "🎯 Meta da semana",
+                placeholder="Ex: Disp. Core 98,5% | QA Projetos"
+            )
+            realizado = st.text_input(
+                "✅ Realizado vs Meta",
+                placeholder="Ex: 98,7% ✅"
+            )
+            ok_sp = st.form_submit_button("💾 Salvar Sprint", use_container_width=True, type="primary")
 
-        if not sprint_existe:
-            with st.form("form_sprint", clear_on_submit=True):
-                bu = st.selectbox("BU / Área *", [
-                    "Estratégia & Projetos",
-                    "Governança & Sustentação",
-                ])
-                responsavel_sp = st.text_input("Responsável *", placeholder="Ex: Ana Silva")
-                progressos = st.text_area(
-                    "📈 Progressos da semana *",
-                    placeholder="- Concluímos o módulo X\n- Finalizamos a migração Y",
-                    height=110
-                )
-                desafios = st.text_area(
-                    "⚠️ Desafios",
-                    placeholder="- Atraso na entrega do fornecedor Z",
-                    height=90
-                )
-                proxima = st.text_area(
-                    "🔜 Próxima Sprint",
-                    placeholder="- Iniciar módulo W\n- Reunião com cliente",
-                    height=90
-                )
-                meta = st.text_input(
-                    "🎯 Meta da semana",
-                    placeholder="Ex: Disp. Core 98,5% | QA Projetos"
-                )
-                realizado = st.text_input(
-                    "✅ Realizado vs Meta",
-                    placeholder="Ex: 98,7% ✅"
-                )
-                ok_sp = st.form_submit_button("💾 Salvar Sprint", use_container_width=True, type="primary")
+            if ok_sp:
+                if not bu or not responsavel_sp or not progressos:
+                    st.error("Preencha BU, Responsável e Progressos.")
+                else:
+                    # Verifica duplicata por semana + BU + responsável
+                    ja_existe = False
+                    if not sprints.empty:
+                        mask = (
+                            (pd.to_datetime(sprints["Semana"]).dt.date == seg_atual) &
+                            (sprints["BU"] == bu) &
+                            (sprints["Responsável"].str.strip().str.lower() == responsavel_sp.strip().lower())
+                        )
+                        ja_existe = mask.any()
 
-                if ok_sp:
-                    if not bu or not responsavel_sp or not progressos:
-                        st.error("Preencha BU, Responsável e Progressos.")
+                    if ja_existe:
+                        st.warning(f"⚠️ Sprint de **{bu}** / **{responsavel_sp}** já registrada nesta semana.")
                     else:
                         salvar_sprint({
-                            "Semana": pd.Timestamp(seg_atual),
-                            "BU": bu,
-                            "Responsável": responsavel_sp,
-                            "Progressos": progressos,
-                            "Desafios": desafios,
+                            "Semana":       pd.Timestamp(seg_atual),
+                            "BU":           bu,
+                            "Responsável":  responsavel_sp,
+                            "Progressos":   progressos,
+                            "Desafios":     desafios,
                             "Próxima Sprint": proxima,
-                            "Meta": meta,
-                            "Realizado": realizado,
+                            "Meta":         meta,
+                            "Realizado":    realizado,
                         })
-                        st.success(f"✅ Sprint da semana **{label_semana}** salva!")
+                        st.success(f"✅ Sprint de **{responsavel_sp}** ({bu}) salva!")
                         st.rerun()
 
     with col_hist:
@@ -510,33 +539,48 @@ with tab_sprint:
         if sprints.empty:
             st.info("Nenhuma sprint registrada ainda.")
         else:
-            sprints_ord = sprints.sort_values("Semana", ascending=False)
+            sprints_ord = sprints.sort_values("Semana", ascending=False).copy()
+            sprints_ord["Semana"] = pd.to_datetime(sprints_ord["Semana"])
 
-            for _, sp in sprints_ord.iterrows():
-                semana_str = pd.to_datetime(sp["Semana"]).strftime("%d/%m/%Y")
-                is_atual   = pd.to_datetime(sp["Semana"]).date() == seg_atual
+            fc1, fc2 = st.columns(2)
+            bus_disponiveis = ["Todas"] + sorted(sprints_ord["BU"].dropna().unique().tolist())
+            filtro_bu  = fc1.selectbox("🏢 Filtrar por BU", bus_disponiveis, key="filtro_bu_sprint")
+            semanas_disponiveis = sprints_ord["Semana"].dt.strftime("%d/%m/%Y").unique().tolist()
+            filtro_sem = fc2.selectbox("📅 Filtrar por Semana", ["Todas"] + semanas_disponiveis, key="filtro_sem_sprint")
 
-                with st.expander(
-                    f"{'🟢 ' if is_atual else ''}Semana {semana_str} — {sp.get('BU','')}"
-                    f"{' ← ATUAL' if is_atual else ''}",
-                    expanded=is_atual
-                ):
-                    col_s1, col_s2 = st.columns(2)
-                    with col_s1:
-                        st.markdown(f"**👤 Responsável:** {sp.get('Responsável','')}")
-                        st.markdown(f"**🎯 Meta:** {sp.get('Meta','—')}")
-                        st.markdown(f"**✅ Realizado:** {sp.get('Realizado','—')}")
-                        st.divider()
-                        st.markdown("**📈 Progressos:**")
-                        for linha in str(sp.get("Progressos","")).split("\n"):
-                            if linha.strip():
-                                st.markdown(f"- {linha.strip().lstrip('-').strip()}")
-                    with col_s2:
-                        st.markdown("**⚠️ Desafios:**")
-                        for linha in str(sp.get("Desafios","")).split("\n"):
-                            if linha.strip():
-                                st.markdown(f"- {linha.strip().lstrip('-').strip()}")
-                        st.markdown("**🔜 Próxima Sprint:**")
-                        for linha in str(sp.get("Próxima Sprint","")).split("\n"):
-                            if linha.strip():
-                                st.markdown(f"- {linha.strip().lstrip('-').strip()}")
+            df_hist = sprints_ord.copy()
+            if filtro_bu != "Todas":
+                df_hist = df_hist[df_hist["BU"] == filtro_bu]
+            if filtro_sem != "Todas":
+                df_hist = df_hist[df_hist["Semana"].dt.strftime("%d/%m/%Y") == filtro_sem]
+
+            if df_hist.empty:
+                st.warning("Nenhuma sprint encontrada com os filtros selecionados.")
+            else:
+                st.caption(f"{len(df_hist)} sprint(s) encontrada(s)")
+                for _, sp in df_hist.iterrows():
+                    semana_str = pd.to_datetime(sp["Semana"]).strftime("%d/%m/%Y")
+                    is_atual   = pd.to_datetime(sp["Semana"]).date() == seg_atual
+                    with st.expander(
+                        f"{'🟢 ' if is_atual else ''}Semana {semana_str} — {sp.get('BU','')} — {sp.get('Responsável','')}",
+                        expanded=is_atual
+                    ):
+                        col_s1, col_s2 = st.columns(2)
+                        with col_s1:
+                            st.markdown(f"**👤 Responsável:** {sp.get('Responsável','')}")
+                            st.markdown(f"**🎯 Meta:** {sp.get('Meta','—')}")
+                            st.markdown(f"**✅ Realizado:** {sp.get('Realizado','—')}")
+                            st.divider()
+                            st.markdown("**📈 Progressos:**")
+                            for linha in str(sp.get("Progressos","")).split("\n"):
+                                if linha.strip():
+                                    st.markdown(f"- {linha.strip().lstrip('-').strip()}")
+                        with col_s2:
+                            st.markdown("**⚠️ Desafios:**")
+                            for linha in str(sp.get("Desafios","")).split("\n"):
+                                if linha.strip():
+                                    st.markdown(f"- {linha.strip().lstrip('-').strip()}")
+                            st.markdown("**🔜 Próxima Sprint:**")
+                            for linha in str(sp.get("Próxima Sprint","")).split("\n"):
+                                if linha.strip():
+                                    st.markdown(f"- {linha.strip().lstrip('-').strip()}")
